@@ -8,7 +8,7 @@ Token-efficient MCP tool support for [pi](https://pi.dev). `pi-mcp` keeps config
 - Lazy, isolated per-server activation
 - Paginated `tools/list` and `notifications/tools/list_changed`
 - Per-server tool allowlists and denylists
-- Model-visible server names with concise configured descriptions
+- Model-visible server names with full configured descriptions
 - BM25-style deferred tool discovery
 - Pi native deferred loading on supported Anthropic and OpenAI models
 - Provider-safe tool names with collision handling
@@ -79,7 +79,7 @@ Project configuration is loaded only after Pi trusts the project. A project serv
 
 | Option | Default | Meaning |
 |---|---:|---|
-| `description` | none | Capability summary shown concisely at startup, returned by `mcp_active`, and used for discovery |
+| `description` | none | Full capability description shown at startup and used for discovery |
 | `enabled` | `true` | Make the server available for activation |
 | `startupTimeoutMs` | `15000` | Initialize and inventory timeout |
 | `toolTimeoutMs` | `60000` | Tool-call timeout |
@@ -93,7 +93,7 @@ The JSON Schema is available at [`schema/pi-mcp.schema.json`](schema/pi-mcp.sche
 
 ## Model usage
 
-In a fresh session, the model sees only `mcp_active` and a compact catalog containing server names and concise configured descriptions. Descriptions are collapsed to one line and capped at 160 characters in the startup prompt:
+In a fresh session, the model sees only `mcp_active` and a catalog containing server names and their full configured descriptions:
 
 ```text
 ## Configured MCP servers
@@ -110,7 +110,7 @@ The model activates only the server needed for the task:
 mcp_active(server="github")
 ```
 
-After the connection and tool inventory complete, the result returns that server's full configured description and tool count. It also makes `mcp_search` available. Searches must name one active server:
+After the connection and tool inventory complete, the result reports successful activation and the discovered tool count. It also makes `mcp_search` available. Searches must name one active server:
 
 ```text
 mcp_search(server="github", query="find pull requests", limit=3)
@@ -132,7 +132,7 @@ Text output follows Pi's built-in `bash` convention: the last 2000 lines or 50 K
 
 Run `/mcp` with no arguments to open the interactive tabbed control center:
 
-- **Overview** — active server count, active tool count, schema errors, and config files
+- **Overview** — ready server count, active tool count, schema errors, and config files
 - **Servers** — per-server state, tool count, source, errors, and stderr
 - **Tools** — browse and enable/disable individual MCP tools
 

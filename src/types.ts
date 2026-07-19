@@ -103,7 +103,6 @@ export interface McpToolDetails {
 export interface McpActiveDetails {
   kind: "mcp-active";
   serverName: string;
-  description?: string;
   toolCount: number;
 }
 

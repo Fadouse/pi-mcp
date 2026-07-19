@@ -29,7 +29,6 @@ const STATE_ENTRY_TYPE = "pi-mcp-state";
 const STATUS_KEY = "20-pi-mcp";
 const LEGACY_STATUS_KEYS = ["pi-mcp", "pi-mcp-tools"] as const;
 const RESULT_PREVIEW_LINES = 5;
-const MAX_PROMPT_SERVER_DESCRIPTION_CHARS = 160;
 
 interface McpRenderState {
   startedAt?: number;
@@ -63,7 +62,7 @@ export default function piMcpExtension(pi: ExtensionAPI) {
   pi.registerTool<typeof ACTIVE_SCHEMA, McpActiveDetails>({
     name: ACTIVE_TOOL_NAME,
     label: "MCP Active",
-    description: "Activate one configured MCP server and discover its tools. Returns the server description after activation.",
+    description: "Activate one configured MCP server and discover its tools.",
     promptSnippet: "Activate a configured MCP server by name before searching its tools",
     parameters: ACTIVE_SCHEMA,
     executionMode: "sequential",
@@ -81,23 +80,20 @@ export default function piMcpExtension(pi: ExtensionAPI) {
         details: {
           kind: "mcp-active",
           serverName: params.server,
-          description: resolved.config.description,
           toolCount: 0,
         },
       });
       const state = await currentManager.activateServer(params.server, signal);
       const active = pi.getActiveTools();
       if (!active.includes(SEARCH_TOOL_NAME)) pi.setActiveTools([...active, SEARCH_TOOL_NAME]);
-      const description = resolved.config.description?.trim() || "No description configured.";
       return {
         content: [{
           type: "text",
-          text: `Activated MCP server ${params.server}.\nDescription: ${description}\nDiscovered tools: ${state.tools.length}.\nUse mcp_search with server=${JSON.stringify(params.server)} to load relevant tools.`,
+          text: `Activated MCP server ${params.server}.\nDiscovered tools: ${state.tools.length}.`,
         }],
         details: {
           kind: "mcp-active",
           serverName: params.server,
-          description: resolved.config.description,
           toolCount: state.tools.length,
         },
       };
@@ -284,7 +280,7 @@ export default function piMcpExtension(pi: ExtensionAPI) {
     const active = pi.getActiveTools().filter((name) => name !== SEARCH_TOOL_NAME);
     if (!active.includes(ACTIVE_TOOL_NAME)) active.push(ACTIVE_TOOL_NAME);
     pi.setActiveTools(active);
-    ctx.ui.setStatus(STATUS_KEY, footerStatus(ctx, `MCP 0/${loadedConfig.servers.size} active`));
+    ctx.ui.setStatus(STATUS_KEY, footerStatus(ctx, `MCP 0/${loadedConfig.servers.size}`));
     restoreActiveServers(ctx);
   });
 
@@ -551,7 +547,7 @@ export default function piMcpExtension(pi: ExtensionAPI) {
     const currentManager = manager;
     const config = loadedConfig;
     if (!currentManager || !config) return;
-    ctx.ui.setStatus(STATUS_KEY, footerStatus(ctx, `MCP ${currentManager.readyCount}/${config.servers.size} active`));
+    ctx.ui.setStatus(STATUS_KEY, footerStatus(ctx, `MCP ${currentManager.readyCount}/${config.servers.size}`));
   }
 
   function showStatus(ctx: ExtensionContext): void {
@@ -587,10 +583,9 @@ function formatServerCatalog(config: LoadedMcpConfig | undefined): string | unde
   if (!config || config.servers.size === 0) return undefined;
   const lines = [...config.servers.values()]
     .sort((left, right) => left.name.localeCompare(right.name))
-    .map((server) => {
-      const description = conciseServerDescription(server.config.description);
-      return description ? `- \`${server.name}\`: ${description}` : `- \`${server.name}\``;
-    });
+    .map((server) => server.config.description
+      ? `- \`${server.name}\`: ${server.config.description}`
+      : `- \`${server.name}\``);
   return [
     "## Configured MCP servers",
     "",
@@ -598,15 +593,8 @@ function formatServerCatalog(config: LoadedMcpConfig | undefined): string | unde
     "",
     ...lines,
     "",
-    "Call `mcp_active` with a server name to activate it and receive its description. Then use `mcp_search` with that same server name to load only the relevant tools.",
+    "Call `mcp_active` with a server name to activate it. Then use `mcp_search` with that same server name to load only the relevant tools.",
   ].join("\n");
-}
-
-function conciseServerDescription(value: string | undefined): string | undefined {
-  const compact = value?.trim().replace(/\s+/g, " ");
-  if (!compact) return undefined;
-  if (compact.length <= MAX_PROMPT_SERVER_DESCRIPTION_CHARS) return compact;
-  return `${compact.slice(0, MAX_PROMPT_SERVER_DESCRIPTION_CHARS - 1).trimEnd()}…`;
 }
 
 function formatServerNames(config: LoadedMcpConfig): string {

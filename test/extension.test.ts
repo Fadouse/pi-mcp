@@ -10,13 +10,14 @@ import piMcpExtension from "../src/index.js";
 const fixture = fileURLToPath(new URL("./fixtures/test-mcp-server.ts", import.meta.url));
 
 test("extension lazily activates a server, searches only that server, and executes a tool", async () => {
+  const serverDescription = `Echo messages through a test service.\n${"Full configured description content. ".repeat(6)}`;
   const root = await mkdtemp(join(tmpdir(), "pi-mcp-extension-"));
   const agentDir = join(root, "agent");
   await mkdir(agentDir, { recursive: true });
   await writeFile(join(agentDir, "mcp.json"), JSON.stringify({
     mcpServers: {
       test: {
-        description: "Echo messages through a test service",
+        description: serverDescription,
         command: process.execPath,
         args: ["--import", "tsx", fixture],
         cwd: process.cwd(),
@@ -66,9 +67,10 @@ test("extension lazily activates a server, searches only that server, and execut
     const promptResult = await promptHandler({ systemPrompt: "base prompt" }, ctx) as { systemPrompt: string };
     assert.match(promptResult.systemPrompt, /## Configured MCP servers/);
     assert.match(promptResult.systemPrompt, /- `test`: Echo messages through a test service/);
+    assert.ok(promptResult.systemPrompt.includes(serverDescription));
     assert.doesNotMatch(promptResult.systemPrompt, new RegExp(process.execPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.deepEqual(active, ["mcp_active"]);
-    assert.equal(statuses.get("20-pi-mcp"), "MCP 0/1 active");
+    assert.equal(statuses.get("20-pi-mcp"), "MCP 0/1");
 
     const search = tools.get("mcp_search");
     assert.ok(search);
@@ -91,8 +93,8 @@ test("extension lazily activates a server, searches only that server, and execut
       ctx,
     );
     const activateText = activateResult.content[0]?.type === "text" ? activateResult.content[0].text : "";
-    assert.match(activateText, /Description: Echo messages through a test service/);
-    assert.match(activateText, /Discovered tools: 1/);
+    assert.equal(activateText, "Activated MCP server test.\nDiscovered tools: 1.");
+    assert.doesNotMatch(activateText, /Description:/);
     assert.ok(active.includes("mcp_search"));
 
     const searchResult = await search.execute(
@@ -113,7 +115,7 @@ test("extension lazily activates a server, searches only that server, and execut
     assert.doesNotMatch(remote.description, /MCP server/i);
     const result = await remote.execute("remote-call", { message: "works" }, undefined, undefined, ctx);
     assert.equal(result.content[0]?.type === "text" ? result.content[0].text : undefined, "echo:works");
-    assert.equal(statuses.get("20-pi-mcp"), "MCP 1/1 active");
+    assert.equal(statuses.get("20-pi-mcp"), "MCP 1/1");
     assert.equal(statuses.get("pi-mcp"), undefined);
     assert.equal(statuses.get("pi-mcp-tools"), undefined);
   } finally {

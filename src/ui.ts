@@ -93,7 +93,7 @@ export async function showMcpDashboard(
       const ready = servers.filter((server) => server.status === "ready").length;
       const failed = servers.filter((server) => server.status === "failed").length;
       const active = tools.filter((tool) => model.isToolActive(tool.piName)).length;
-      add(` ${theme.fg("text", "Servers")}  ${theme.fg(ready === servers.length ? "success" : "warning", `${ready}/${servers.length} active`)}`);
+      add(` ${theme.fg("text", "Servers")}  ${theme.fg(ready === servers.length ? "success" : "warning", `${ready}/${servers.length} ready`)}`);
       add(` ${theme.fg("text", "Tools")}    ${theme.fg("accent", `${active}/${tools.length} active`)}`);
       if (failed > 0) add(` ${theme.fg("error", `${failed} server${failed === 1 ? "" : "s"} failed`)}`);
       const schemaErrors = model.schemaErrorCount();
