@@ -4,7 +4,10 @@ import { z } from "zod";
 
 const server = new McpServer(
   { name: "pi-mcp-test", version: "1.0.0" },
-  { capabilities: { tools: { listChanged: true } } },
+  {
+    capabilities: { tools: { listChanged: true } },
+    instructions: "Use echo_message to echo text through the test server.",
+  },
 );
 
 server.registerTool(

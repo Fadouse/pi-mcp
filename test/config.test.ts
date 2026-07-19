@@ -29,6 +29,7 @@ test("project config overrides global config only when trusted", async () => {
   const untrusted = await loadMcpConfig({ cwd: project, configDirName: ".pi", projectTrusted: false, agentDir });
   assert.equal(untrusted.servers.get("docs")?.config.command, "global-server");
   assert.equal(untrusted.servers.get("docs")?.config.description, "Global documentation");
+  assert.equal(untrusted.options.includeServerInstructions, true);
 
   const trusted = await loadMcpConfig({ cwd: project, configDirName: ".pi", projectTrusted: true, agentDir });
   assert.equal(trusted.servers.get("docs")?.config.command, "project-server");

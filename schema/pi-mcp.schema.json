@@ -13,7 +13,7 @@
         "searchLimit": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
         "maxOutputBytes": { "type": "integer", "minimum": 1, "default": 51200 },
         "maxOutputLines": { "type": "integer", "minimum": 1, "default": 2000 },
-        "includeServerInstructions": { "type": "boolean", "default": false }
+        "includeServerInstructions": { "type": "boolean", "default": true }
       }
     },
     "mcpServers": {

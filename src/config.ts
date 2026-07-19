@@ -13,7 +13,7 @@ const DEFAULT_OPTIONS: Required<McpOptions> = {
   searchLimit: 3,
   maxOutputBytes: 50 * 1024,
   maxOutputLines: 2000,
-  includeServerInstructions: false,
+  includeServerInstructions: true,
 };
 
 const SERVER_NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;

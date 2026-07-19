@@ -29,6 +29,7 @@ const STATE_ENTRY_TYPE = "pi-mcp-state";
 const STATUS_KEY = "20-pi-mcp";
 const LEGACY_STATUS_KEYS = ["pi-mcp", "pi-mcp-tools"] as const;
 const RESULT_PREVIEW_LINES = 5;
+const MAX_PROMPT_SERVER_DESCRIPTION_CHARS = 160;
 
 interface McpRenderState {
   startedAt?: number;
@@ -584,9 +585,12 @@ export default function piMcpExtension(pi: ExtensionAPI) {
 
 function formatServerCatalog(config: LoadedMcpConfig | undefined): string | undefined {
   if (!config || config.servers.size === 0) return undefined;
-  const lines = [...config.servers.keys()]
-    .sort((left, right) => left.localeCompare(right))
-    .map((name) => `- \`${name}\``);
+  const lines = [...config.servers.values()]
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((server) => {
+      const description = conciseServerDescription(server.config.description);
+      return description ? `- \`${server.name}\`: ${description}` : `- \`${server.name}\``;
+    });
   return [
     "## Configured MCP servers",
     "",
@@ -596,6 +600,13 @@ function formatServerCatalog(config: LoadedMcpConfig | undefined): string | unde
     "",
     "Call `mcp_active` with a server name to activate it and receive its description. Then use `mcp_search` with that same server name to load only the relevant tools.",
   ].join("\n");
+}
+
+function conciseServerDescription(value: string | undefined): string | undefined {
+  const compact = value?.trim().replace(/\s+/g, " ");
+  if (!compact) return undefined;
+  if (compact.length <= MAX_PROMPT_SERVER_DESCRIPTION_CHARS) return compact;
+  return `${compact.slice(0, MAX_PROMPT_SERVER_DESCRIPTION_CHARS - 1).trimEnd()}…`;
 }
 
 function formatServerNames(config: LoadedMcpConfig): string {

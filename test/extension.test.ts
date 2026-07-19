@@ -65,8 +65,7 @@ test("extension lazily activates a server, searches only that server, and execut
     assert.ok(promptHandler);
     const promptResult = await promptHandler({ systemPrompt: "base prompt" }, ctx) as { systemPrompt: string };
     assert.match(promptResult.systemPrompt, /## Configured MCP servers/);
-    assert.match(promptResult.systemPrompt, /- `test`/);
-    assert.doesNotMatch(promptResult.systemPrompt, /Echo messages through a test service/);
+    assert.match(promptResult.systemPrompt, /- `test`: Echo messages through a test service/);
     assert.doesNotMatch(promptResult.systemPrompt, new RegExp(process.execPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.deepEqual(active, ["mcp_active"]);
     assert.equal(statuses.get("20-pi-mcp"), "MCP 0/1 active");
@@ -103,7 +102,9 @@ test("extension lazily activates a server, searches only that server, and execut
       undefined,
       ctx,
     );
-    assert.match(searchResult.content[0]?.type === "text" ? searchResult.content[0].text : "", /Loaded MCP tools from test/);
+    const searchText = searchResult.content[0]?.type === "text" ? searchResult.content[0].text : "";
+    assert.match(searchText, /Loaded MCP tools from test/);
+    assert.match(searchText, /Instructions from test:\nUse echo_message to echo text through the test server\./);
     const remoteName = active.find((name) => name.startsWith("mcp_test_echo_message"));
     assert.ok(remoteName);
     const remote = tools.get(remoteName);
