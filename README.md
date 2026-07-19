@@ -1,14 +1,14 @@
 # pi-mcp
 
-Token-efficient MCP tool support for [pi](https://pi.dev). `pi-mcp` connects to MCP servers, keeps their tool schemas out of the initial prompt, and exposes the relevant schemas only after the model calls `mcp_search`.
+Token-efficient MCP tool support for [pi](https://pi.dev). `pi-mcp` keeps configured servers disconnected and their tool schemas out of the initial prompt. The model activates one server with `mcp_active`, then loads only relevant tools from that server with `mcp_search`.
 
 ## Features
 
 - MCP tools over stdio and Streamable HTTP
-- Background, isolated server startup
+- Lazy, isolated per-server activation
 - Paginated `tools/list` and `notifications/tools/list_changed`
 - Per-server tool allowlists and denylists
-- Model-visible server catalog with configurable descriptions
+- Model-visible server names with descriptions revealed only after activation
 - BM25-style deferred tool discovery
 - Pi native deferred loading on supported Anthropic and OpenAI models
 - Provider-safe tool names with collision handling
@@ -79,13 +79,13 @@ Project configuration is loaded only after Pi trusts the project. A project serv
 
 | Option | Default | Meaning |
 |---|---:|---|
-| `description` | none | Concise server capability summary exposed to the model and used for tool discovery |
-| `enabled` | `true` | Start the server |
+| `description` | none | Concise capability summary returned by `mcp_active` and used for tool discovery |
+| `enabled` | `true` | Make the server available for activation |
 | `startupTimeoutMs` | `15000` | Initialize and inventory timeout |
 | `toolTimeoutMs` | `60000` | Tool-call timeout |
 | `enabledTools` | all | Raw MCP tool allowlist |
 | `disabledTools` | none | Raw MCP tool denylist, applied after the allowlist |
-| `alwaysActiveTools` | none | Raw tools exposed without discovery |
+| `alwaysActiveTools` | none | Raw tools exposed immediately after their server is activated |
 | `includeInstructions` | global setting | Return bounded server instructions when one of its tools is first loaded |
 | `supportsParallelToolCalls` | `false` | Permit this server's tool calls to execute concurrently |
 
@@ -93,20 +93,32 @@ The JSON Schema is available at [`schema/pi-mcp.schema.json`](schema/pi-mcp.sche
 
 ## Model usage
 
-Initially the model sees `mcp_search` plus a compact catalog of configured server names and descriptions:
+In a fresh session, the model sees only `mcp_active` and a compact catalog containing server names without descriptions:
 
 ```text
 ## Configured MCP servers
 
-MCP tool schemas are deferred. Use `mcp_search` when one of these server capabilities is relevant:
+MCP servers and their tool schemas are inactive by default:
 
-- `filesystem`: Read files and browse directories in the current project
-- `github`: Search GitHub repositories, issues, and pull requests
+- `filesystem`
+- `github`
 ```
 
-The catalog never includes commands, URLs, environment values, or HTTP headers. Server descriptions also participate in discovery, so a capability named only in a server description can still lead the model to the relevant tools.
+The model activates only the server needed for the task:
 
-A search activates a small number of exact MCP tools. On models with native deferred-tool support, Pi inserts tool references without rebuilding the stable prompt prefix. Other models receive the newly active schemas normally on their next request.
+```text
+mcp_active(server="github")
+```
+
+After the connection and tool inventory complete, the result returns that server's configured description and tool count. It also makes `mcp_search` available. Searches must name one active server:
+
+```text
+mcp_search(server="github", query="find pull requests", limit=3)
+```
+
+The server parameter prevents unrelated servers from competing for search results. Server descriptions participate in discovery after activation, so capability terms from the description can lead to relevant tools.
+
+A search activates a small number of exact MCP tools from only that server. On models with native deferred-tool support, Pi inserts tool references without rebuilding the stable prompt prefix. Other models receive the newly active schemas normally on their next request. The catalog and activation result never include commands, URLs, environment values, or HTTP headers.
 
 MCP tools deliberately omit Pi prompt snippets and guidelines, so activation does not change the system prompt. Their descriptions expose only the tool capability and output contract, not bridge implementation details.
 
@@ -118,7 +130,7 @@ Text output follows Pi's built-in `bash` convention: the last 2000 lines or 50 K
 
 Run `/mcp` with no arguments to open the interactive tabbed control center:
 
-- **Overview** — readiness, active tool count, schema errors, and config files
+- **Overview** — active server count, active tool count, schema errors, and config files
 - **Servers** — per-server state, tool count, source, errors, and stderr
 - **Tools** — browse and enable/disable individual MCP tools
 

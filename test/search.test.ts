@@ -44,3 +44,13 @@ test("search indexes configured server descriptions", () => {
   ]);
   assert.equal(index.search("binary analysis", 1)[0]?.remoteName, "decompile");
 });
+
+test("search can be restricted to one MCP server", () => {
+  const index = new McpToolSearchIndex();
+  index.rebuild([
+    record("alpha", "search_alpha", "Search shared records"),
+    record("beta", "search_beta", "Search shared records"),
+  ]);
+  assert.equal(index.search("shared records", 5, "beta")[0]?.remoteName, "search_beta");
+  assert.equal(index.search("shared records", 5, "missing").length, 0);
+});

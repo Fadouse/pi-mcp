@@ -93,7 +93,7 @@ export async function showMcpDashboard(
       const ready = servers.filter((server) => server.status === "ready").length;
       const failed = servers.filter((server) => server.status === "failed").length;
       const active = tools.filter((tool) => model.isToolActive(tool.piName)).length;
-      add(` ${theme.fg("text", "Servers")}  ${theme.fg(ready === servers.length ? "success" : "warning", `${ready}/${servers.length} ready`)}`);
+      add(` ${theme.fg("text", "Servers")}  ${theme.fg(ready === servers.length ? "success" : "warning", `${ready}/${servers.length} active`)}`);
       add(` ${theme.fg("text", "Tools")}    ${theme.fg("accent", `${active}/${tools.length} active`)}`);
       if (failed > 0) add(` ${theme.fg("error", `${failed} server${failed === 1 ? "" : "s"} failed`)}`);
       const schemaErrors = model.schemaErrorCount();
@@ -104,7 +104,7 @@ export async function showMcpDashboard(
       if (files.length === 0) add(` ${theme.fg("dim", "No mcp.json files found")}`);
       for (const file of files) add(` ${theme.fg("dim", file)}`);
       add("");
-      add(` ${theme.fg("dim", "MCP tools stay hidden until mcp_search loads them. Open the Tools tab to toggle them manually.")}`);
+      add(` ${theme.fg("dim", "Servers stay idle until mcp_active starts them; their tools stay hidden until mcp_search loads matches.")}`);
     };
 
     const renderServers = (add: (line?: string) => void): void => {

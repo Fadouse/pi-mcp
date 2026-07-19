@@ -100,8 +100,16 @@ export interface McpToolDetails {
   fullOutputPath?: string;
 }
 
+export interface McpActiveDetails {
+  kind: "mcp-active";
+  serverName: string;
+  description?: string;
+  toolCount: number;
+}
+
 export interface McpSearchDetails {
   kind: "mcp-search";
+  serverName: string;
   query: string;
   matches: string[];
   added: string[];

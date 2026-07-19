@@ -32,7 +32,7 @@ export class McpToolSearchIndex {
     this.index.addAll(documents);
   }
 
-  search(query: string, limit: number): McpToolRecord[] {
+  search(query: string, limit: number, serverName?: string): McpToolRecord[] {
     const trimmed = query.trim();
     if (!trimmed) return [];
     const results = this.index.search(trimmed, {
@@ -42,9 +42,10 @@ export class McpToolSearchIndex {
       combineWith: "OR",
     });
     return results
-      .slice(0, Math.max(1, limit))
       .map((result) => this.records.get(String(result.id)))
-      .filter((record): record is McpToolRecord => record !== undefined);
+      .filter((record): record is McpToolRecord =>
+        record !== undefined && (!serverName || record.serverName === serverName))
+      .slice(0, Math.max(1, limit));
   }
 }
 

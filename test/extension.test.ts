@@ -9,7 +9,7 @@ import piMcpExtension from "../src/index.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/test-mcp-server.ts", import.meta.url));
 
-test("extension discovers, activates, and executes an MCP tool", async () => {
+test("extension lazily activates a server, searches only that server, and executes a tool", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-mcp-extension-"));
   const agentDir = join(root, "agent");
   await mkdir(agentDir, { recursive: true });
@@ -65,13 +65,45 @@ test("extension discovers, activates, and executes an MCP tool", async () => {
     assert.ok(promptHandler);
     const promptResult = await promptHandler({ systemPrompt: "base prompt" }, ctx) as { systemPrompt: string };
     assert.match(promptResult.systemPrompt, /## Configured MCP servers/);
-    assert.match(promptResult.systemPrompt, /`test`: Echo messages through a test service/);
+    assert.match(promptResult.systemPrompt, /- `test`/);
+    assert.doesNotMatch(promptResult.systemPrompt, /Echo messages through a test service/);
     assert.doesNotMatch(promptResult.systemPrompt, new RegExp(process.execPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.deepEqual(active, ["mcp_active"]);
+    assert.equal(statuses.get("20-pi-mcp"), "MCP 0/1 active");
 
     const search = tools.get("mcp_search");
     assert.ok(search);
-    const searchResult = await search.execute("search-call", { query: "echo message" }, undefined, undefined, ctx);
-    assert.match(searchResult.content[0]?.type === "text" ? searchResult.content[0].text : "", /Loaded MCP tools/);
+    const inactiveSearch = await search.execute(
+      "inactive-search",
+      { server: "test", query: "echo message" },
+      undefined,
+      undefined,
+      ctx,
+    );
+    assert.match(inactiveSearch.content[0]?.type === "text" ? inactiveSearch.content[0].text : "", /not active/);
+
+    const activate = tools.get("mcp_active");
+    assert.ok(activate);
+    const activateResult = await activate.execute(
+      "active-call",
+      { server: "test" },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const activateText = activateResult.content[0]?.type === "text" ? activateResult.content[0].text : "";
+    assert.match(activateText, /Description: Echo messages through a test service/);
+    assert.match(activateText, /Discovered tools: 1/);
+    assert.ok(active.includes("mcp_search"));
+
+    const searchResult = await search.execute(
+      "search-call",
+      { server: "test", query: "echo message" },
+      undefined,
+      undefined,
+      ctx,
+    );
+    assert.match(searchResult.content[0]?.type === "text" ? searchResult.content[0].text : "", /Loaded MCP tools from test/);
     const remoteName = active.find((name) => name.startsWith("mcp_test_echo_message"));
     assert.ok(remoteName);
     const remote = tools.get(remoteName);
@@ -80,7 +112,7 @@ test("extension discovers, activates, and executes an MCP tool", async () => {
     assert.doesNotMatch(remote.description, /MCP server/i);
     const result = await remote.execute("remote-call", { message: "works" }, undefined, undefined, ctx);
     assert.equal(result.content[0]?.type === "text" ? result.content[0].text : undefined, "echo:works");
-    assert.equal(statuses.get("20-pi-mcp"), "MCP 1/1");
+    assert.equal(statuses.get("20-pi-mcp"), "MCP 1/1 active");
     assert.equal(statuses.get("pi-mcp"), undefined);
     assert.equal(statuses.get("pi-mcp-tools"), undefined);
   } finally {

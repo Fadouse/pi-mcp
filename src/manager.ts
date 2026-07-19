@@ -44,27 +44,24 @@ export class McpManager {
     }
   }
 
-  start(): void {
-    for (const server of this.loadedConfig.servers.values()) {
-      const promise = this.connectServer(server).catch(() => undefined);
-      this.startup.set(server.name, promise);
-    }
-  }
+  async activateServer(serverName: string, signal?: AbortSignal): Promise<ServerState> {
+    if (this.closing) throw new Error("MCP runtime is closing");
+    const server = this.loadedConfig.servers.get(serverName);
+    const state = this.states.get(serverName);
+    if (!server || !state) throw new Error(`Unknown MCP server: ${serverName}`);
+    if (state.status === "ready") return state;
 
-  async waitForStartup(signal?: AbortSignal): Promise<void> {
-    const all = Promise.allSettled(this.startup.values()).then(() => undefined);
-    if (!signal) return all;
-    if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
-    await Promise.race([
-      all,
-      new Promise<never>((_resolve, reject) => {
-        signal.addEventListener(
-          "abort",
-          () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
-          { once: true },
-        );
-      }),
-    ]);
+    let startup = state.status === "connecting" ? this.startup.get(serverName) : undefined;
+    if (!startup) {
+      startup = this.connectServer(server);
+      this.startup.set(serverName, startup);
+    }
+    await waitForPromise(startup, signal);
+    const activated = this.states.get(serverName);
+    if (!activated || activated.status !== "ready") {
+      throw new Error(`MCP server ${serverName} failed to activate${activated?.error ? `: ${activated.error}` : ""}`);
+    }
+    return activated;
   }
 
   get readyCount(): number {
@@ -260,6 +257,21 @@ function isModelVisible(tool: Tool): boolean {
   const visibility = (ui as Record<string, unknown>).visibility;
   if (!Array.isArray(visibility)) return true;
   return visibility.includes("model");
+}
+
+async function waitForPromise(promise: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return promise;
+  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  await Promise.race([
+    promise,
+    new Promise<never>((_resolve, reject) => {
+      signal.addEventListener(
+        "abort",
+        () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
+        { once: true },
+      );
+    }),
+  ]);
 }
 
 function errorMessage(error: unknown): string {

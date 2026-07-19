@@ -6,7 +6,7 @@ import type { LoadedMcpConfig } from "../src/types.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/test-mcp-server.ts", import.meta.url));
 
-test("connects to stdio, lists tools, and calls a tool", async () => {
+test("keeps servers idle until explicitly activated, then lists and calls tools", async () => {
   const config: LoadedMcpConfig = {
     servers: new Map([
       [
@@ -35,10 +35,9 @@ test("connects to stdio, lists tools, and calls a tool", async () => {
   let updates = 0;
   const manager = new McpManager(config, process.cwd(), () => { updates += 1; });
   try {
-    manager.start();
-    await manager.waitForStartup();
-    const state = manager.states.get("test");
-    assert.equal(state?.status, "ready", state?.error);
+    assert.equal(manager.states.get("test")?.status, "idle");
+    const state = await manager.activateServer("test");
+    assert.equal(state.status, "ready", state.error);
     assert.equal(state?.tools[0]?.name, "echo_message");
     const result = await manager.callTool("test", "echo_message", { message: "hi" }, {}) as {
       content: Array<{ type: string; text?: string }>;
