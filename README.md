@@ -86,7 +86,7 @@ Project configuration is loaded only after Pi trusts the project. A project serv
 | `enabledTools` | all | Raw MCP tool allowlist |
 | `disabledTools` | none | Raw MCP tool denylist, applied after the allowlist |
 | `alwaysActiveTools` | none | Raw tools exposed immediately after their server is activated |
-| `includeInstructions` | global setting | Return bounded server instructions when one of its tools is first loaded |
+| `includeInstructions` | global setting | Return server instructions with successful activation; MCP output limits apply |
 | `supportsParallelToolCalls` | `false` | Permit this server's tool calls to execute concurrently |
 
 The JSON Schema is available at [`schema/pi-mcp.schema.json`](schema/pi-mcp.schema.json).
@@ -110,7 +110,7 @@ The model activates only the server needed for the task:
 mcp_active(server="github")
 ```
 
-After the connection and tool inventory complete, the result reports successful activation and the discovered tool count. It also makes `mcp_search` available. Searches must name one active server:
+After the connection and tool inventory complete, the result reports successful activation, the discovered tool count, and—by default—any instructions returned by the server. It also makes `mcp_search` available. Searches must name one active server:
 
 ```text
 mcp_search(server="github", query="find pull requests", limit=3)
@@ -118,15 +118,17 @@ mcp_search(server="github", query="find pull requests", limit=3)
 
 The server parameter prevents unrelated servers from competing for search results. Server descriptions participate in discovery after activation, so capability terms from the description can lead to relevant tools.
 
-A search activates a small number of exact MCP tools from only that server. On models with native deferred-tool support, Pi inserts tool references without rebuilding the stable prompt prefix. Other models receive the newly active schemas normally on their next request. The catalog and activation result never include commands, URLs, environment values, or HTTP headers.
+A search activates a small number of exact MCP tools from only that server. On models with native deferred-tool support, Pi inserts tool references without rebuilding the stable prompt prefix. Other models receive the newly active schemas normally on their next request. The catalog and activation result do not expose commands, URLs, environment values, or HTTP headers from the local MCP configuration.
 
-Server-provided MCP instructions are included once, with the first successful tool search for that server, by default. Set global `includeServerInstructions` or per-server `includeInstructions` to `false` to disable them.
+Server-provided MCP instructions are included once with the successful `mcp_active` result for that server, by default. They use the same `maxOutputLines` and `maxOutputBytes` policy as MCP tool results; when truncated, the complete instructions are saved to a temporary file whose path is included in the result. Set global `includeServerInstructions` or per-server `includeInstructions` to `false` to disable them.
+
+In the TUI, collapsed `mcp_active` and `mcp_search` rows show only their call headers. Expand tool output (`Ctrl+O` by default) to display their complete results.
 
 MCP tools deliberately omit Pi prompt snippets and guidelines, so activation does not change the system prompt. Their descriptions expose only the tool capability and output contract, not bridge implementation details.
 
 ### Output limits
 
-Text output follows Pi's built-in `bash` convention: the last 2000 lines or 50 KiB are returned by default, whichever limit is reached first. A truncated result includes a temporary-file path containing the complete text output. The limits can be changed with `maxOutputLines` and `maxOutputBytes`.
+MCP tool text and server instructions follow Pi's built-in `bash` convention: the last 2000 lines or 50 KiB are returned by default, whichever limit is reached first. A truncated result includes a temporary-file path containing the complete text output. The limits can be changed with `maxOutputLines` and `maxOutputBytes`.
 
 ## Commands and control center
 

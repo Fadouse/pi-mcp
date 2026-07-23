@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { formatSize, truncateTail } from "@earendil-works/pi-coding-agent";
+import { formatSize, truncateTail, type TruncationResult } from "@earendil-works/pi-coding-agent";
 import type { McpToolDetails } from "./types.js";
 
 type PiContent =
@@ -13,6 +13,32 @@ export interface NormalizedMcpResult {
   details: McpToolDetails;
   isError: boolean;
   errorText?: string;
+}
+
+export interface McpTextOutput {
+  content: string;
+  truncation: TruncationResult;
+  fullOutputPath?: string;
+}
+
+export async function applyMcpTextOutputPolicy(
+  content: string,
+  identity: { serverName: string; remoteName: string },
+  toolCallId: string,
+  limits: { maxBytes: number; maxLines: number },
+): Promise<McpTextOutput> {
+  const truncation = truncateTail(content, {
+    maxBytes: limits.maxBytes,
+    maxLines: limits.maxLines,
+  });
+  if (!truncation.truncated) return { content: truncation.content, truncation };
+
+  const fullOutputPath = await saveFullOutput(identity, toolCallId, content);
+  return {
+    content: truncation.content + formatTruncationNotice(content, truncation, fullOutputPath, limits.maxBytes),
+    truncation,
+    fullOutputPath,
+  };
 }
 
 export async function normalizeMcpToolResult(
@@ -74,17 +100,8 @@ export async function normalizeMcpToolResult(
   }
 
   const fullText = textParts.join("\n\n");
-  const truncation = truncateTail(fullText, {
-    maxBytes: limits.maxBytes,
-    maxLines: limits.maxLines,
-  });
-  let fullOutputPath: string | undefined;
-  let outputText = truncation.content;
-  if (truncation.truncated) {
-    fullOutputPath = await saveFullOutput(identity, toolCallId, fullText);
-    outputText += formatTruncationNotice(fullText, truncation, fullOutputPath, limits.maxBytes);
-  }
-  if (outputText) content.unshift({ type: "text", text: outputText });
+  const output = await applyMcpTextOutputPolicy(fullText, identity, toolCallId, limits);
+  if (output.content) content.unshift({ type: "text", text: output.content });
 
   const details: McpToolDetails = {
     kind: "mcp-tool",
@@ -93,15 +110,15 @@ export async function normalizeMcpToolResult(
     piToolName: identity.piName,
     ...(structuredContent ? { structuredContent } : {}),
     ...(isRecord(value._meta) ? { meta: value._meta } : {}),
-    ...(truncation.truncated ? { truncated: true, truncation } : {}),
-    ...(fullOutputPath ? { fullOutputPath } : {}),
+    ...(output.truncation.truncated ? { truncated: true, truncation: output.truncation } : {}),
+    ...(output.fullOutputPath ? { fullOutputPath: output.fullOutputPath } : {}),
   };
   const isError = value.isError === true;
   return {
     content,
     details,
     isError,
-    ...(isError ? { errorText: outputText || "MCP server reported a tool error" } : {}),
+    ...(isError ? { errorText: output.content || "MCP server reported a tool error" } : {}),
   };
 }
 

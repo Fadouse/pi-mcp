@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ const fixture = fileURLToPath(new URL("./fixtures/test-mcp-server.ts", import.me
 
 test("extension lazily activates a server, searches only that server, and executes a tool", async () => {
   const serverDescription = `Echo messages through a test service.\n${"Full configured description content. ".repeat(6)}`;
+  const serverInstructions = ["instruction line 1", "instruction line 2", "instruction line 3", "instruction line 4"].join("\n");
   const root = await mkdtemp(join(tmpdir(), "pi-mcp-extension-"));
   const agentDir = join(root, "agent");
   await mkdir(agentDir, { recursive: true });
@@ -20,10 +21,12 @@ test("extension lazily activates a server, searches only that server, and execut
         description: serverDescription,
         command: process.execPath,
         args: ["--import", "tsx", fixture],
+        env: { PI_MCP_TEST_INSTRUCTIONS: serverInstructions },
         cwd: process.cwd(),
         startupTimeoutMs: 10_000,
       },
     },
+    options: { maxOutputLines: 2 },
   }));
 
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -58,6 +61,23 @@ test("extension lazily activates a server, searches only that server, and execut
       setStatus(key: string, value: string | undefined) { statuses.set(key, value); },
     },
   } as unknown as ExtensionContext;
+  const renderTheme = {
+    fg: (_color: string, text: string) => text,
+  } as any;
+  const renderContext = (expanded: boolean) => ({
+    args: {},
+    toolCallId: "render-call",
+    invalidate() {},
+    lastComponent: undefined,
+    state: {},
+    cwd: root,
+    executionStarted: true,
+    argsComplete: true,
+    isPartial: false,
+    expanded,
+    showImages: true,
+    isError: false,
+  }) as any;
 
   piMcpExtension(pi);
   try {
@@ -93,9 +113,29 @@ test("extension lazily activates a server, searches only that server, and execut
       ctx,
     );
     const activateText = activateResult.content[0]?.type === "text" ? activateResult.content[0].text : "";
-    assert.equal(activateText, "Activated MCP server test.\nDiscovered tools: 1.");
+    assert.match(activateText, /^Activated MCP server test\.\nDiscovered tools: 1\.\nInstructions from test:/);
+    assert.match(activateText, /instruction line 3\ninstruction line 4/);
+    assert.doesNotMatch(activateText, /instruction line 1/);
+    const instructionsPath = activateText.match(/Full output: ([^\]]+)\]/)?.[1];
+    assert.ok(instructionsPath);
+    assert.equal(await readFile(instructionsPath, "utf8"), serverInstructions);
     assert.doesNotMatch(activateText, /Description:/);
     assert.ok(active.includes("mcp_search"));
+    assert.ok(activate.renderResult);
+    const collapsedActivate = activate.renderResult(
+      activateResult,
+      { expanded: false, isPartial: false },
+      renderTheme,
+      renderContext(false),
+    );
+    assert.deepEqual(collapsedActivate.render(100), []);
+    const expandedActivate = activate.renderResult(
+      activateResult,
+      { expanded: true, isPartial: false },
+      renderTheme,
+      renderContext(true),
+    );
+    assert.match(expandedActivate.render(100).join("\n"), /Instructions from test:/);
 
     const searchResult = await search.execute(
       "search-call",
@@ -106,12 +146,27 @@ test("extension lazily activates a server, searches only that server, and execut
     );
     const searchText = searchResult.content[0]?.type === "text" ? searchResult.content[0].text : "";
     assert.match(searchText, /Loaded MCP tools from test/);
-    assert.match(searchText, /Instructions from test:\nUse echo_message to echo text through the test server\./);
+    assert.doesNotMatch(searchText, /Instructions from test:/);
+    assert.ok(search.renderResult);
+    const collapsedSearch = search.renderResult(
+      searchResult,
+      { expanded: false, isPartial: false },
+      renderTheme,
+      renderContext(false),
+    );
+    assert.deepEqual(collapsedSearch.render(100), []);
+    const expandedSearch = search.renderResult(
+      searchResult,
+      { expanded: true, isPartial: false },
+      renderTheme,
+      renderContext(true),
+    );
+    assert.match(expandedSearch.render(100).join("\n"), /Loaded MCP tools from test/);
     const remoteName = active.find((name) => name.startsWith("mcp_test_echo_message"));
     assert.ok(remoteName);
     const remote = tools.get(remoteName);
     assert.ok(remote);
-    assert.match(remote.description, /Output is truncated to the last 2000 lines or 50KB/);
+    assert.match(remote.description, /Output is truncated to the last 2 lines or 50KB/);
     assert.doesNotMatch(remote.description, /MCP server/i);
     const result = await remote.execute("remote-call", { message: "works" }, undefined, undefined, ctx);
     assert.equal(result.content[0]?.type === "text" ? result.content[0].text : undefined, "echo:works");

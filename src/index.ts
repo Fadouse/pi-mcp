@@ -1,16 +1,19 @@
 import {
+  type AgentToolResult,
   CONFIG_DIR_NAME,
   type ExtensionAPI,
   type ExtensionContext,
   formatSize,
   keyHint,
+  type Theme,
+  type ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadMcpConfig } from "./config.js";
 import { McpManager } from "./manager.js";
 import { createMcpToolName } from "./names.js";
-import { normalizeMcpToolResult } from "./result.js";
+import { applyMcpTextOutputPolicy, normalizeMcpToolResult } from "./result.js";
 import { normalizeMcpInputSchema, schemaSearchText } from "./schema.js";
 import { McpToolSearchIndex } from "./search.js";
 import type {
@@ -62,11 +65,11 @@ export default function piMcpExtension(pi: ExtensionAPI) {
   pi.registerTool<typeof ACTIVE_SCHEMA, McpActiveDetails>({
     name: ACTIVE_TOOL_NAME,
     label: "MCP Active",
-    description: "Activate one configured MCP server and discover its tools.",
+    description: "Activate one configured MCP server, discover its tools, and return available server instructions.",
     promptSnippet: "Activate a configured MCP server by name before searching its tools",
     parameters: ACTIVE_SCHEMA,
     executionMode: "sequential",
-    async execute(_toolCallId, params, signal, onUpdate) {
+    async execute(toolCallId, params, signal, onUpdate) {
       const currentManager = manager;
       const config = loadedConfig;
       if (!currentManager || !config) throw new Error("MCP runtime is not available");
@@ -86,10 +89,15 @@ export default function piMcpExtension(pi: ExtensionAPI) {
       const state = await currentManager.activateServer(params.server, signal);
       const active = pi.getActiveTools();
       if (!active.includes(SEARCH_TOOL_NAME)) pi.setActiveTools([...active, SEARCH_TOOL_NAME]);
+      const lines = [
+        `Activated MCP server ${params.server}.`,
+        `Discovered tools: ${state.tools.length}.`,
+      ];
+      await appendServerInstructions(lines, params.server, toolCallId, config);
       return {
         content: [{
           type: "text",
-          text: `Activated MCP server ${params.server}.\nDiscovered tools: ${state.tools.length}.`,
+          text: lines.join("\n"),
         }],
         details: {
           kind: "mcp-active",
@@ -101,9 +109,8 @@ export default function piMcpExtension(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return new Text(`${theme.fg("toolTitle", theme.bold("mcp_active "))}${theme.fg("muted", args.server)}`, 0, 0);
     },
-    renderResult(result, { isPartial }, theme) {
-      const text = result.content.find((item) => item.type === "text")?.text ?? "";
-      return new Text(theme.fg(isPartial ? "warning" : "success", text), 0, 0);
+    renderResult(result, options, theme) {
+      return renderMcpControlResult(result, options, theme);
     },
   });
 
@@ -172,7 +179,6 @@ export default function piMcpExtension(pi: ExtensionAPI) {
       const lines = matchedNames.length > 0
         ? [added.length > 0 ? `Loaded MCP tools from ${params.server}: ${added.join(", ")}` : `Matching MCP tools from ${params.server} already active: ${matchedNames.join(", ")}`]
         : [`No MCP tools on ${params.server} matched: ${params.query}`];
-      appendRelevantInstructions(lines, matches, config);
       return searchResult(params.server, params.query, matchedNames, added, lines.join("\n"));
     },
     renderCall(args, theme) {
@@ -182,9 +188,8 @@ export default function piMcpExtension(pi: ExtensionAPI) {
         0,
       );
     },
-    renderResult(result, { isPartial }, theme) {
-      const text = result.content.find((item) => item.type === "text")?.text ?? "";
-      return new Text(theme.fg(isPartial ? "warning" : "success", text), 0, 0);
+    renderResult(result, options, theme) {
+      return renderMcpControlResult(result, options, theme);
     },
   });
 
@@ -564,19 +569,40 @@ export default function piMcpExtension(pi: ExtensionAPI) {
     ctx.ui.notify(lines.join("\n"), schemaErrors.size > 0 ? "warning" : "info");
   }
 
-  function appendRelevantInstructions(lines: string[], matches: McpToolRecord[], config: LoadedMcpConfig): void {
+  async function appendServerInstructions(
+    lines: string[],
+    serverName: string,
+    toolCallId: string,
+    config: LoadedMcpConfig,
+  ): Promise<void> {
     const currentManager = manager;
-    if (!currentManager) return;
-    for (const serverName of new Set(matches.map((record) => record.serverName))) {
-      if (shownInstructions.has(serverName)) continue;
-      const serverConfig = config.servers.get(serverName)?.config;
-      const include = serverConfig?.includeInstructions ?? config.options.includeServerInstructions;
-      const instructions = currentManager.states.get(serverName)?.instructions?.trim();
-      if (!include || !instructions) continue;
-      shownInstructions.add(serverName);
-      lines.push(`Instructions from ${serverName}:\n${instructions.slice(0, 2000)}`);
-    }
+    if (!currentManager || shownInstructions.has(serverName)) return;
+    const serverConfig = config.servers.get(serverName)?.config;
+    const include = serverConfig?.includeInstructions ?? config.options.includeServerInstructions;
+    const instructions = currentManager.states.get(serverName)?.instructions;
+    if (!include || !instructions?.trim()) return;
+    const output = await applyMcpTextOutputPolicy(
+      instructions,
+      { serverName, remoteName: "instructions" },
+      toolCallId,
+      {
+        maxBytes: config.options.maxOutputBytes,
+        maxLines: config.options.maxOutputLines,
+      },
+    );
+    shownInstructions.add(serverName);
+    lines.push(`Instructions from ${serverName}:\n${output.content}`);
   }
+}
+
+function renderMcpControlResult(
+  result: AgentToolResult<unknown>,
+  { expanded, isPartial }: ToolRenderResultOptions,
+  theme: Theme,
+): Container | Text {
+  if (!expanded) return new Container();
+  const text = result.content.find((item) => item.type === "text")?.text ?? "";
+  return new Text(theme.fg(isPartial ? "warning" : "success", text), 0, 0);
 }
 
 function formatServerCatalog(config: LoadedMcpConfig | undefined): string | undefined {

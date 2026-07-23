@@ -6,7 +6,7 @@ const server = new McpServer(
   { name: "pi-mcp-test", version: "1.0.0" },
   {
     capabilities: { tools: { listChanged: true } },
-    instructions: "Use echo_message to echo text through the test server.",
+    instructions: process.env.PI_MCP_TEST_INSTRUCTIONS ?? "Use echo_message to echo text through the test server.",
   },
 );
 
